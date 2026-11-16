@@ -1,0 +1,15 @@
+{
+  "Records": [
+    {
+      "eventName": "MODIFY",
+      "eventSource": "aws:dynamodb",
+      "awsRegion": "us-east-1",
+      "dynamodb": {
+        "Keys": {"livro_id": {"S": "vidas-secas-graciliano-ramos"}},
+        "OldImage": {"livro_id": {"S": "vidas-secas-graciliano-ramos"}, "titulo": {"S": "Vidas Secas"}, "autor": {"S": "Graciliano Ramos"}, "preco": {"N": "15"}, "quantidade": {"N": "0"}},
+        "NewImage": {"livro_id": {"S": "vidas-secas-graciliano-ramos"}, "titulo": {"S": "Vidas Secas"}, "autor": {"S": "Graciliano Ramos"}, "preco": {"N": "15"}, "quantidade": {"N": "1"}},
+        "StreamViewType": "NEW_AND_OLD_IMAGES"
+      }
+    }
+  ]
+}
