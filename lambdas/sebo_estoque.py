@@ -54,6 +54,7 @@ def lambda_handler(event, context):
 
 
 def listar():
+    # scan: ok p/ acervo pequeno; se o sebo crescer, GSI
     itens = []
     pagina = livros.scan()
     itens.extend(pagina["Items"])
