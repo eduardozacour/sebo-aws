@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import boto3
+from botocore.exceptions import ClientError
+
 dynamodb = boto3.resource("dynamodb")
 livros = dynamodb.Table(os.environ["TABELA_LIVROS"])
 interesses = dynamodb.Table(os.environ["TABELA_INTERESSES"])
@@ -77,6 +79,16 @@ def registrar_interesse(livro_id, email):
         })
 
     gravar_interesse(livro_id, email, "aguardando")
+    # Corrida: o livro pode ter chegado entre o get_item acima e a gravação do interesse,
+    # e nesse caso a sebo_chegada já rodou sem ver este cliente. Relê e, se chegou,
+    # notifica aqui mesmo. A condição em marcar_notificado garante um e-mail só.
+    livro = livros.get_item(Key={"livro_id": livro_id}, ConsistentRead=True).get("Item")
+    if livro and livro.get("quantidade", 0) > 0 and marcar_notificado(livro_id, email):
+        notificar("chegou", email, livro)
+        return resposta(200, {
+            "disponivel": True,
+            "mensagem": f"'{livro['titulo']}' acabou de chegar. Enviamos um e-mail para {email}.",
+        })
     return resposta(200, {
         "disponivel": False,
         "mensagem": f"'{livro['titulo']}' está em falta. Avisaremos {email} quando chegar.",
@@ -90,6 +102,23 @@ def gravar_interesse(livro_id, email, status):
         "status": status,
         "criado_em": agora(),
     })
+
+
+def marcar_notificado(livro_id, email):
+    """Passa aguardando -> notificado de forma atômica. False se outro já notificou."""
+    try:
+        interesses.update_item(
+            Key={"livro_id": livro_id, "email": email},
+            UpdateExpression="SET #s = :novo, notificado_em = :t",
+            ConditionExpression="#s = :aguardando",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":novo": "notificado", ":aguardando": "aguardando", ":t": agora()},
+        )
+        return True
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise
 
 
 def notificar(tipo, email, livro):
