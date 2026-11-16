@@ -20,7 +20,8 @@ sns = boto3.client("sns")
 TEXTOS = {
     "disponivel": (
         "{livraria}: '{titulo}' está disponível",
-        "Olá!\n\nO livro '{titulo}' ({autor}) que você procurou está disponível.\nCompareça à livraria para efetivar a compra:\n{endereco}\n\n"
+        "Olá!\n\nO livro '{titulo}' ({autor}) que você procurou está disponível.\n"
+        "Preço: R$ {preco}\n\nCompareça à livraria para efetivar a compra:\n{endereco}\n\n"
         "{livraria}",
     ),
     "chegou": (
@@ -43,6 +44,7 @@ def lambda_handler(event, context):
         "endereco": os.environ.get("ENDERECO_LIVRARIA", "(endereço da livraria)"),
         "titulo": livro.get("titulo", ""),
         "autor": livro.get("autor", ""),
+        "preco": f"{float(livro.get('preco', 0)):.2f}".replace(".", ","),
     }
     r = sns.publish(
         TopicArn=os.environ["TOPICO_ARN"],
