@@ -7,9 +7,6 @@ author:
 date: "20/11/2026"
 ---
 
-<!-- Modelo: as seções 1 a 6 descrevem o que já está no código. As marcadas com [PREENCHER]
-dependem do que acontecer na AWS: escrever só o que foi visto funcionando, com print ou log. -->
-
 # 1. Onde está o trabalho
 
 - **Conta AWS Academy:** Learner Lab do aluno **Eduardo Vasques Zacour** (eduardo.zacour@gmail.com), curso *AWS Academy Learner Lab* [183838], região **us-east-1**.
@@ -73,17 +70,15 @@ O passo a passo completo está no `README.md` do repositório: tabelas, Stream, 
 
 Os testes 1 a 7 rodaram em 18/11/2026 no Learner Lab (us-east-1), entre 12:34 e 12:38 BRT, pelas interfaces de linha de comando (`comprador.py`/`colaborador.py`) e pelo `teste_concorrencia.py`; o teste 8 (reentrega pelo botão Test) ficou para ser executado e documentado; o teste 9 rodou fora da AWS, em 19/11/2026, sobre o mesmo commit (`218d60a`). Todos os horários em BRT. As saídas completas estão em `evidencias/` (no repositório: `Trabalhos/Trab2/evidencias/`).
 
-| # | Cenário | Resultado esperado | Resultado obtido | Evidência |
-|---|---|---|---|---|
-| 1 | Pedido de livro com estoque (Dom Casmurro, cliente A) | e-mail "disponível" | `200` "disponível"; e-mail "Sebo: 'Dom Casmurro' está disponível" enviado às 12:35:47 (MessageId `98562e6e…`) e no inbox às 12:35 PM | `demo-18-11.txt` (passo 2); `email-avisos-disponivel-18-11.png`; CloudWatch `sebo_notificar` |
-| 2 | Pedido de livro sem estoque (Vidas Secas, 2 clientes) | "aguardando" na tabela | `200` "em falta"; 2 interesses gravados em `SeboInteresses` (status `aguardando`, às 12:35:53/12:35:54) | `demo-18-11.txt` (passos 3 e 4); `dynamodb-18-11.png` |
-| 3 | Chegada de 1 exemplar (Vidas Secas) | 2 e-mails "chegou", status `notificado` | `200` "Estoque agora: 1" às 12:36:09; `sebo_chegada` logou `vidas-secas: 0 -> 1` e "clientes avisados neste lote: 2"; 2 e-mails "chegou" (MessageIds `43465aef…` e `2336e5be…`); interesses marcados `notificado` | `demo-18-11.txt` (passos 5, 5b, 5c, 5d); CloudWatch `sebo_chegada` e `sebo_notificar` (JSON); `email-avisos-chegou-18-11.png` |
-| 4 | Duas vendas com 1 exemplar | 2ª venda recusada (409) | 1ª venda `200` (venda `5940a136…`, restam 0); 2ª `409` "sem estoque"; `sebo_chegada` logou `1 -> 0`, 0 avisados (12:37:43) | `demo-18-11.txt` (passo 6); CloudWatch `sebo_chegada` |
-| 5 | Cliente B não recebe e-mail do cliente A | filtro do SNS funciona | Cada e-mail cita só o próprio destinatário no corpo ("Avisaremos eduardo.zacour@gmail.com" / "…rodrigosnrocha@hotmail.com"); o assunto é compartilhado, o corpo é por cliente; o inbox do cliente A tem só os e-mails dele. A caixa do cliente B fica a confirmar (a assinatura dele ainda estava "Pending confirmation" às 13:50 — ver seção 8) | `email-avisos-disponivel-18-11.png`; `email-avisos-chegou-18-11.png`; `sns-18-11.png`; `demo-18-11.txt` |
-| 6 | 12 vendas simultâneas, 4 exemplares (`teste_concorrencia.py`) | 4 aceitas, 8 com 409, estoque 0 | Exatamente 4 aceitas (os logs mostram 4→3→2→1→0), 8×409, estoque final 0 (12:37:53–12:37:56) | `concorrencia-18-11.txt`; CloudWatch `sebo_chegada` (JSON); `cloudtrail-18-11.png` (12 `CreateLogStream` de `sebo_estoque` entre 12:37:54 e 12:38:01, um por container frio) |
-| 7 | 12 entradas simultâneas de 1 (`teste_concorrencia.py`) | estoque sobe exatamente 12 | As 12 aceitas, estoque de 0 a exatamente 12 (0→10 numa invocação e 10→12 na outra), 0 clientes avisados | `concorrencia-18-11.txt`; CloudWatch `sebo_chegada` (JSON); `cloudtrail-18-11.png` |
-| 8 | Reentrega do Stream (botão Test com `eventos-teste/chegada_stream.json`) | `{"avisados": 0}`, nenhum e-mail novo | [a confirmar] | [print do Test — a anexar] |
-| 9 | Teste local (`pytest`) | 6 testes passam | 6/6 passaram em 1.08 s | `pytest-19-11.txt` (19/11, commit `218d60a`) |
+1. **Pedido de livro com estoque (Dom Casmurro, cliente A).** Esperado: e-mail "disponível". Obtido: resposta `200` "disponível"; e-mail "Sebo: 'Dom Casmurro' está disponível" enviado às 12:35:47 (MessageId `98562e6e…`) e no inbox às 12:35 PM. Evidência: `demo-18-11.txt` (passo 2), `email-avisos-disponivel-18-11.png`, logs do CloudWatch de `sebo_notificar`.
+2. **Pedido de livro sem estoque (Vidas Secas, 2 clientes).** Esperado: status "aguardando" na tabela de interesses. Obtido: resposta `200` "em falta"; dois interesses gravados em `SeboInteresses` (status `aguardando`, às 12:35:53 e 12:35:54). Evidência: `demo-18-11.txt` (passos 3 e 4), `dynamodb-18-11.png`.
+3. **Chegada de 1 exemplar (Vidas Secas).** Esperado: dois e-mails "chegou" e status `notificado`. Obtido: resposta `200` "Estoque agora: 1" às 12:36:09; `sebo_chegada` registrou `vidas-secas: 0 -> 1` e "clientes avisados neste lote: 2"; dois e-mails "chegou" (MessageIds `43465aef…` e `2336e5be…`); interesses marcados como `notificado`. Evidência: `demo-18-11.txt` (passos 5, 5b, 5c, 5d), logs do CloudWatch de `sebo_chegada` e `sebo_notificar` (JSON), `email-avisos-chegou-18-11.png`.
+4. **Duas vendas com 1 exemplar.** Esperado: a 2ª venda recusada com 409. Obtido: 1ª venda `200` (venda `5940a136…`, estoque 0); 2ª venda `409` "sem estoque"; `sebo_chegada` registrou `1 -> 0` com 0 avisados (12:37:43). Evidência: `demo-18-11.txt` (passo 6), logs do CloudWatch de `sebo_chegada`.
+5. **Cliente B não recebe o e-mail do cliente A.** Esperado: filtro do SNS por destinatário. Obtido: cada e-mail cita apenas o próprio destinatário no corpo ("Avisaremos eduardo.zacour@gmail.com" e "…rodrigosnrocha@hotmail.com"); o assunto é compartilhado, o corpo é por cliente; o inbox do cliente A tem apenas os e-mails dele. A caixa do cliente B fica a confirmar, pois a assinatura dele ainda estava "Pending confirmation" às 13:50 (ver seção 8). Evidência: `email-avisos-disponivel-18-11.png`, `email-avisos-chegou-18-11.png`, `sns-18-11.png`, `demo-18-11.txt`.
+6. **12 vendas simultâneas com 4 exemplares (`teste_concorrencia.py`).** Esperado: 4 aceitas, 8 com 409, estoque final 0. Obtido: exatamente 4 aceitas (os logs mostram a sequência 4→3→2→1→0), 8 respostas 409, estoque final 0, entre 12:37:53 e 12:37:56. Evidência: `concorrencia-18-11.txt`, logs do CloudWatch de `sebo_chegada` (JSON), `cloudtrail-18-11.png` (12 `CreateLogStream` de `sebo_estoque` entre 12:37:54 e 12:38:01, um por container frio).
+7. **12 entradas simultâneas de 1 (`teste_concorrencia.py`).** Esperado: o estoque sobe exatamente 12. Obtido: as 12 entradas aceitas, estoque de 0 para exatamente 12 (0→10 numa invocação e 10→12 na outra), 0 clientes avisados. Evidência: `concorrencia-18-11.txt`, logs do CloudWatch de `sebo_chegada` (JSON), `cloudtrail-18-11.png`.
+8. **Reentrega do Stream (botão Test com `eventos-teste/chegada_stream.json`).** Esperado: resposta `{"avisados": 0}` e nenhum e-mail novo. Obtido: [a confirmar]. Evidência: [print do botão Test, a anexar].
+9. **Teste local (`pytest`).** Esperado: 6 testes passam. Obtido: 6/6 passaram em 1.08 s (19/11/2026, commit `218d60a`). Evidência: `pytest-19-11.txt`.
 
 # 8. O que funcionou e o que não funcionou
 
@@ -91,16 +86,16 @@ Os testes 1 a 7 rodaram em 18/11/2026 no Learner Lab (us-east-1), entre 12:34 e 
 
 - A demonstração completa (passos 1–6, 12:35:35–12:37:43) sem falha: pedido com estoque, pedido sem estoque por dois clientes, chegada com dois e-mails e duas vendas com um exemplar (`demo-18-11.txt`).
 - O filtro do SNS por destinatário: cada e-mail cita no corpo só o próprio destinatário (`email-avisos-disponivel-18-11.png`, `email-avisos-chegou-18-11.png`).
-- O teste de concorrência, coração do trabalho: exatamente 4 de 12 vendas aceitas e 12 de 12 entradas aceitas, sem perda de update; os logs CloudWatch mostram a sequência exata (4→3→2→1→0 e 0→12) e o CloudTrail registra 12 containers frios de `sebo_estoque` no intervalo de 7 s (12:37:54–12:38:01) — escala sob carga real.
+- O teste de concorrência, coração do trabalho: exatamente 4 de 12 vendas aceitas e 12 de 12 entradas aceitas, sem perda de update; os logs CloudWatch mostram a sequência exata (4→3→2→1→0 e 0→12) e o CloudTrail registra 12 containers frios de `sebo_estoque` no intervalo de 7 s (12:37:54–12:38:01), confirmando escala sob carga real.
 - O DynamoDB Stream acionando `sebo_chegada`: o seed de 8 livros foi processado em 6 invocações paralelas (12:34:39–12:34:41, 3 containers simultâneos) e a entrada real de Vidas Secas gerou os 2 avisos (12:36:09–12:36:10).
 - `sebo_notificar` escalou durante a demo: um segundo container subiu no momento da chegada (novo log stream às 15:36:10.5 UTC, CloudWatch `sebo_notificar`).
 - Os 6 testes locais passaram (`pytest-19-11.txt`).
 
 **Não funcionou:**
 
-1. **403 na Function URL durante a configuração** (antes de 12:23; o smoke test das 12:23 já retornava 200) — causa e correção a confirmar (a função tinha auth NONE; provável acesso antes de a URL estar habilitada). [RODRIGO]
-2. **Assinatura do cliente B pendente no SNS** — `rodrigosnrocha@hotmail.com` aparecia "Pending confirmation" no print das 13:50. O Publish do "chegou" foi aceito pelo SNS às 12:36:10 (MessageId `2336e5be…`), mas, se a assinatura ainda não estava confirmada, o e-mail não foi entregue — e o e-mail de confirmação também não chegou, porque a caixa não era a nossa. [RODRIGO]
-3. **Limite da janela do lab** — as credenciais da manhã foram canceladas na tarde (16:51, `AccessDeniedException` com deny explícito da policy `voc-cancel-cred`), o que fechou a console e limitou a coleta de evidências (saídas de texto às 12:39, com recheck às 16:51; screenshots entre 13:51 e 16:16). Nada do que o trabalho depende ficou fora dessa janela.
+1. **403 na Function URL durante a configuração** (antes de 12:23; o smoke test das 12:23 já retornava 200). A causa e a correção ficam a confirmar: a função tinha auth NONE e o provável motivo é acesso antes de a URL estar habilitada. [RODRIGO]
+2. **Assinatura do cliente B pendente no SNS.** `rodrigosnrocha@hotmail.com` aparecia "Pending confirmation" no print das 13:50. O Publish do "chegou" foi aceito pelo SNS às 12:36:10 (MessageId `2336e5be…`), mas, se a assinatura ainda não estava confirmada, o e-mail não foi entregue; o e-mail de confirmação também não chegou, porque a caixa não era a nossa. [RODRIGO]
+3. **Limite da janela do lab.** As credenciais da manhã foram canceladas na tarde (16:51, `AccessDeniedException` com deny explícito da policy `voc-cancel-cred`), o que fechou a console e limitou a coleta de evidências (saídas de texto às 12:39, com recheck às 16:51; screenshots entre 13:51 e 16:16). Nada do que o trabalho depende ficou fora dessa janela.
 
 **Limitações de design (previstas):**
 
