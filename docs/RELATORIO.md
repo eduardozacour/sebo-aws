@@ -56,11 +56,11 @@ Várias Lambdas rodam ao mesmo tempo sobre as mesmas tabelas. Os pontos tratados
 
 1. **Venda do último exemplar.** Dois colaboradores podem vender o mesmo exemplar ao mesmo tempo. A baixa usa `UpdateExpression` com `ConditionExpression quantidade >= 1`, avaliada atomicamente pelo DynamoDB. Uma das duas vendas recebe `409`. Não há ler-e-depois-gravar.
 2. **Entradas simultâneas.** `ADD quantidade :q` é atômico, então duas chegadas ao mesmo tempo não se perdem.
-3. **Entrega "pelo menos uma vez" do Stream.** Se a `sebo_chegada` falhar no meio de um lote, o lote é reentregue. Cada interesse passa de `aguardando` para `notificado` com escrita condicional, e só quem ganhou a escrita envia o e-mail. Assim ninguém recebe aviso duplicado (coberto no teste local `test_em_falta_espera_e_avisa_na_chegada`).
+3. **Entrega "pelo menos uma vez" do Stream.** Se a `sebo_chegada` falhar no meio de um lote, o lote é reentregue. Cada interesse passa de `aguardando` para `notificado` com escrita condicional, e só quem ganhou a escrita envia o e-mail. No teste local `test_em_falta_espera_e_avisa_na_chegada`, repetir o evento após um processamento bem-sucedido não gerou novo aviso. Se a chamada assíncrona falhar antes de ser aceita, o interesse pode ficar como `notificado` sem que o aviso seja enviado.
 4. **Corrida entre pedido e chegada.** Se o livro chega entre a leitura do estoque e a gravação do interesse, a `sebo_chegada` já rodou sem ver esse cliente. A `sebo_pedido` relê o estoque com leitura consistente depois de gravar e, se o livro chegou, notifica ela mesma, usando a mesma escrita condicional. Como as duas Lambdas disputam a mesma escrita condicional, só uma manda o e-mail (teste local `test_corrida_livro_chega_durante_o_pedido`).
-5. **Invocação assíncrona.** `sebo_pedido` e `sebo_chegada` chamam a `sebo_notificar` com `InvocationType=Event`. O comprador não espera o SNS, e uma falha no envio é retentada pela própria AWS sem desfazer o pedido.
+5. **Invocação assíncrona.** `sebo_pedido` e `sebo_chegada` chamam a `sebo_notificar` com `InvocationType=Event`. O comprador não espera a publicação no SNS. Depois de aceitar a chamada assíncrona, o Lambda pode repetir a execução de `sebo_notificar` se ela falhar.
 
-**Decisão de regra de negócio:** quando um livro chega, todos os que esperavam são avisados, em ordem de pedido, e quem chegar primeiro à livraria leva. [Se o professor preferir avisar só tantos quantos forem os exemplares, a mudança fica em `avisar_espera`.]
+**Decisão de regra de negócio:** quando um livro chega, o sistema solicita avisos para todos os clientes que esperavam pelo livro. Quem chegar primeiro à livraria leva.
 
 # 6. Instalação e operação
 
@@ -68,33 +68,34 @@ O passo a passo completo está no `README.md` do repositório: tabelas, Stream, 
 
 # 7. Testes realizados
 
-Os testes no Learner Lab foram realizados em 18/11/2026, entre 12:34 e 12:38 BRT (us-east-1), pelas interfaces de linha de comando (`comprador.py`/`colaborador.py`) e pelo `teste_concorrencia.py`. Os seis testes locais foram executados em 19/11/2026 (pytest 8.4.2, Python 3.14, moto 5.0.0), sobre o mesmo commit (`218d60a`). Todos os horários em BRT. As saídas completas estão em `evidencias/` (no repositório: `Trabalhos/Trab2/evidencias/`).
+Os testes no Learner Lab foram realizados em 18/11/2026, entre 12:34 e 12:38 BRT (us-east-1), pelas interfaces de linha de comando (`comprador.py`/`colaborador.py`) e pelo `teste_concorrencia.py`. Os seis testes locais foram executados em 19/11/2026 sobre o commit `218d60a`. Os horários estão em BRT, salvo indicação explícita. As saídas completas foram guardadas pela dupla.
 
 1. **Pedido de livro com estoque (Dom Casmurro, cliente A).** Esperado: e-mail "disponível". Obtido: resposta `200` "disponível"; e-mail "Sebo: 'Dom Casmurro' está disponível" enviado às 12:35:47 (MessageId `98562e6e…`) e no inbox às 12:35 PM. Evidência: `demo-18-11.txt` (passo 2), `email-avisos-disponivel-18-11.png`, logs do CloudWatch de `sebo_notificar`.
 2. **Pedido de livro sem estoque (Vidas Secas, 2 clientes).** Esperado: status "aguardando" na tabela de interesses. Obtido: resposta `200` "em falta"; dois interesses gravados em `SeboInteresses` (status `aguardando`, às 12:35:53 e 12:35:54). Evidência: `demo-18-11.txt` (passos 3 e 4), `dynamodb-18-11.png`.
 3. **Chegada de 1 exemplar (Vidas Secas).** Esperado: dois e-mails "chegou" e status `notificado`. Obtido: resposta `200` "Estoque agora: 1" às 12:36:09; `sebo_chegada` registrou `vidas-secas: 0 -> 1` e "clientes avisados neste lote: 2"; o SNS aceitou duas publicações de aviso de chegada (MessageIds `43465aef…` e `2336e5be…`); o cliente A recebeu o aviso; interesses marcados como `notificado`. Evidência: `demo-18-11.txt` (passos 5, 5b, 5c, 5d), logs do CloudWatch de `sebo_chegada` e `sebo_notificar` (JSON), `email-avisos-chegou-18-11.png`.
 4. **Duas vendas com 1 exemplar.** Esperado: a 2ª venda recusada com 409. Obtido: 1ª venda `200` (venda `5940a136…`, estoque 0); 2ª venda `409` "sem estoque"; `sebo_chegada` registrou `1 -> 0` com 0 avisados (12:37:43). Evidência: `demo-18-11.txt` (passo 6), logs do CloudWatch de `sebo_chegada`.
-5. **12 vendas simultâneas com 4 exemplares (`teste_concorrencia.py`).** Esperado: 4 aceitas, 8 com 409, estoque final 0. Obtido: exatamente 4 aceitas (os logs mostram a sequência 4→3→2→1→0), 8 respostas 409, estoque final 0, entre 12:37:53 e 12:37:56. Evidência: `concorrencia-18-11.txt`, logs do CloudWatch de `sebo_chegada` (JSON), `cloudtrail-18-11.png` (12 `CreateLogStream` de `sebo_estoque` entre 12:37:54 e 12:38:01, um por container frio).
+5. **12 vendas simultâneas com 4 exemplares (`teste_concorrencia.py`).** Esperado: 4 aceitas, 8 com 409, estoque final 0. Obtido: exatamente 4 aceitas (os logs mostram a sequência 4→3→2→1→0), 8 respostas 409, estoque final 0, entre 12:37:53 e 12:37:56. Evidência: `concorrencia-18-11.txt` e logs do CloudWatch de `sebo_chegada` (JSON).
 6. **12 entradas simultâneas de 1 (`teste_concorrencia.py`).** Esperado: o estoque sobe exatamente 12. Obtido: as 12 entradas aceitas, estoque de 0 para exatamente 12 (0→10 numa invocação e 10→12 na outra), 0 clientes avisados. Evidência: `concorrencia-18-11.txt`, logs do CloudWatch de `sebo_chegada` (JSON), `cloudtrail-18-11.png`.
 7. **Teste local (`pytest`).** Esperado: 6 testes passam. Obtido: 6/6 passaram em 1.08 s (19/11/2026, commit `218d60a`). Evidência: `pytest-19-11.txt`.
 
 # 8. O que funcionou e o que não funcionou
 
-**Funcionou (tudo visto na AWS em 18/11):**
+**Funcionou:**
 
-- A demonstração completa (passos 1–6, 12:35:35–12:37:43) sem falha: pedido com estoque, pedido sem estoque por dois clientes, chegada (o SNS aceitou as duas publicações de aviso de chegada e o cliente A recebeu o aviso) e duas vendas com um exemplar (`demo-18-11.txt`).
-- O teste de concorrência, coração do trabalho: exatamente 4 de 12 vendas aceitas e 12 de 12 entradas aceitas, sem perda de update; os logs CloudWatch mostram a sequência exata (4→3→2→1→0 e 0→12) e o CloudTrail registra 12 containers frios de `sebo_estoque` no intervalo de 7 s (12:37:54–12:38:01), confirmando escala sob carga real.
-- O DynamoDB Stream acionando `sebo_chegada`: o seed de 8 livros foi processado em 6 invocações paralelas (12:34:39–12:34:41, 3 containers simultâneos) e a entrada real de Vidas Secas gerou os 2 avisos (12:36:09–12:36:10).
-- `sebo_notificar` escalou durante a demo: um segundo container subiu no momento da chegada (novo log stream às 15:36:10.5 UTC, CloudWatch `sebo_notificar`).
+- Na demonstração de 18/11, o cliente A recebeu o aviso de livro disponível e o aviso de chegada. O sistema registrou dois interesses em Vidas Secas, e o SNS aceitou duas publicações de aviso de chegada. A primeira tentativa de venda do exemplar foi aceita e a segunda foi recusada por falta de estoque.
+- No teste de concorrência, quatro das 12 tentativas de venda foram aceitas e oito retornaram `409`. As 12 entradas foram aceitas e o estoque final foi 12.
+- O DynamoDB Stream acionou `sebo_chegada` quando o estoque de Vidas Secas passou de 0 para 1.
 - Os 6 testes locais passaram (`pytest-19-11.txt`).
 
 **Não funcionou:**
 
 1. **403 na Function URL durante a configuração.** A Function URL retornou 403 durante a configuração, antes do teste das 12:23, que retornou 200. A causa do 403 não foi confirmada.
 2. **Assinatura do cliente B pendente no SNS.** A inscrição do cliente B aparecia como pendente no SNS (`rodrigosnrocha@hotmail.com`, "Pending confirmation" no print das 13:50). Sem acesso à caixa dele, não foi possível confirmar a entrega do e-mail de confirmação nem do aviso de chegada.
-3. **Limite da janela do lab.** As credenciais da manhã foram canceladas na tarde (16:51, `AccessDeniedException` com deny explícito da policy `voc-cancel-cred`), o que fechou a console e limitou a coleta de evidências (saídas de texto às 12:39, com recheck às 16:51; screenshots entre 13:51 e 16:16). Nada do que o trabalho depende ficou fora dessa janela.
+3. **Limite da janela do lab.** As credenciais da manhã foram canceladas na tarde (16:51, `AccessDeniedException` com deny explícito da policy `voc-cancel-cred`), o que fechou a console e limitou a coleta de evidências (saídas de texto às 12:39, com recheck às 16:51; screenshots entre 13:51 e 16:16).
 
-**Limitações de design (previstas):**
+**Limitações de design:**
+
+- A baixa de estoque e o registro da venda são gravados separadamente. Se a segunda gravação falhar, o estoque pode ser reduzido sem registro da venda.
 
 - A interface é de linha de comando. Não há página web.
 - Não há autenticação nas Function URLs (auth NONE, como nos laboratórios da disciplina). Num sistema real a interface do colaborador ficaria protegida (IAM ou Cognito).
